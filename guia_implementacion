@@ -1,0 +1,209 @@
+# Guía de Implementación
+## Plataforma Analítica para Coca-Cola "En tu hogar"
+
+Este documento proporciona las instrucciones paso a paso para implementar la solución de analítica descriptiva y reportes en AWS para Coca-Cola "En tu hogar", con enfoque en el análisis RFM dinámico y activación de campañas en AEM.
+
+## 1. Prerrequisitos
+
+Antes de comenzar, asegúrese de contar con:
+
+- Cuenta de AWS con permisos administrativos
+- AWS CLI configurado en la máquina del implementador
+- Acceso a las credenciales API de Adobe Experience Manager (AEM)
+- Acceso a la base de datos de Magento Commerce
+- Git instalado en la máquina de despliegue
+
+## 2. Clonar el repositorio de referencia
+
+```bash
+git clone https://github.com/afelipeg/serverless-realtime-analytics.git
+cd serverless-realtime-analytics
+```
+
+## 3. Estructura del proyecto
+
+Los archivos principales del proyecto son:
+
+```
+├── cloudformation/
+│   └── template.yaml        # CloudFormation template principal
+├── lambda/
+│   ├── data-ingestion/      # Lambdas para ingesta de datos
+│   ├── etl-processor/       # Lambdas para procesamiento ETL
+│   ├── reverse-etl/         # Lambda para activación en AEM
+│   └── real-time-inference/ # Lambda para inferencia en tiempo real
+├── glue/
+│   └── scripts/             # Scripts de AWS Glue para ETL
+├── sagemaker/
+│   └── rfm-model/           # Código del modelo RFM dinámico
+├── docs/
+│   └── data-model.md        # Documentación del modelo de datos
+└── README.md                # Documentación general
+```
+
+## 4. Configuración de variables de entorno
+
+Cree un archivo `.env` en la raíz del proyecto para almacenar las configuraciones:
+
+```
+# AWS General
+AWS_REGION=us-east-1
+AWS_PROFILE=coca-cola-dev
+
+# Nombres recursos
+PROJECT_NAME=CocaColaEcommerce
+ENVIRONMENT=dev
+
+# Configuración Magento
+MAGENTO_HOST=https://ecommerce.cocacola.com
+MAGENTO_API_KEY=xxxxxxxxxxxx
+
+# Configuración AEM
+AEM_API_ENDPOINT=https://author.cocacola.com
+AEM_USERNAME=integration-user
+AEM_PASSWORD=xxxxxxxxxxxx
+
+# Configuración de datos
+S3_BUCKET_PREFIX=coca-cola-analytics
+```
+
+## 5. Despliegue de la infraestructura base
+
+### 5.1 Desplegar CloudFormation Stack
+
+```bash
+aws cloudformation deploy \
+  --template-file cloudformation/template.yaml \
+  --stack-name coca-cola-analytics-platform \
+  --parameter-overrides \
+    ProjectName=$PROJECT_NAME \
+    Environment=$ENVIRONMENT \
+    S3BucketSuffix=$S3_BUCKET_PREFIX \
+  --capabilities CAPABILITY_IAM
+```
+
+### 5.2 Configurar SageMaker Feature Store
+
+```bash
+# Crear Feature Group para características RFM
+aws sagemaker create-feature-group \
+  --feature-group-name coca-cola-customer-features \
+  --record-identifier-feature-name customer_id \
+  --feature-definitions '[
+    {"FeatureName":"customer_id","FeatureType":"String"},
+    {"FeatureName":"email","FeatureType":"String"},
+    {"FeatureName":"recency_days","FeatureType":"Fractional"},
+    {"FeatureName":"frequency","FeatureType":"Fractional"},
+    {"FeatureName":"monetary","FeatureType":"Fractional"},
+    {"FeatureName":"r_score","FeatureType":"Integral"},
+    {"FeatureName":"f_score","FeatureType":"Integral"},
+    {"FeatureName":"m_score","FeatureType":"Integral"},
+    {"FeatureName":"rfm_score","FeatureType":"Integral"},
+    {"FeatureName":"segment","FeatureType":"String"},
+    {"FeatureName":"cluster_id","FeatureType":"Integral"},
+    {"FeatureName":"event_time","FeatureType":"Integral"}
+  ]' \
+  --online-store-config '{"EnableOnlineStore": true}' \
+  --offline-store-config '{"S3StorageConfig": {"S3Uri": "s3://BUCKET_NAME/feature-store/"}, "DisableGlueTableCreation": false}'
+```
+
+### 5.3 Crear SageMaker Pipeline para RFM dinámico
+
+Utilice la consola de SageMaker o AWS CLI para:
+
+1. Crear una instancia de procesamiento de SageMaker
+2. Cargar el script de modelo RFM (`sagemaker/rfm-model/model.py`)
+3. Configurar una programación diaria con EventBridge
+
+## 6. Configuración de fuentes de datos
+
+### 6.1 Magento Commerce
+
+Para configurar la extracción desde Magento:
+
+1. Crear un usuario API en Magento con los roles adecuados
+2. Configurar la Lambda de ingesta con las credenciales API
+3. Probar la conectividad ejecutando una ingesta manual
+
+### 6.2 Adobe Experience Manager (AEM)
+
+Para configurar la integración con AEM:
+
+1. Verificar el endpoint de AEM para activación de campañas
+2. Crear un usuario de integración en AEM
+3. Configurar la Lambda Reverse-ETL con las credenciales
+4. Probar la activación con datos de muestra
+
+## 7. Validación de la implementación
+
+### 7.1 Prueba de la ingesta de datos
+
+```bash
+# Invocar la Lambda de ingesta para probar
+aws lambda invoke \
+  --function-name $PROJECT_NAME-scheduled-ingestion-$ENVIRONMENT \
+  --payload '{"source": "magento", "date": "2023-01-01"}' \
+  response.json
+```
+
+### 7.2 Verificar ETL y catálogo de datos
+
+1. Comprobar que los crawlers de Glue se ejecutan correctamente
+2. Verificar que las tablas aparecen en el catálogo de datos
+3. Ejecutar consultas de prueba en Athena
+
+### 7.3 Probar el modelo RFM dinámico
+
+1. Ejecutar el trabajo de procesamiento de SageMaker manualmente
+2. Verificar la actualización de segmentos
+3. Comprobar la inferencia en tiempo real con un cliente de prueba
+
+### 7.4 Validar la activación en AEM
+
+1. Ejecutar la Lambda de Reverse-ETL manualmente
+2. Verificar que los segmentos se reciben en AEM
+3. Comprobar que las campañas se activan correctamente
+
+## 8. Monitoreo y mantenimiento
+
+### 8.1 CloudWatch Dashboards
+
+Configurar dashboards para monitorear:
+
+- Ingesta diaria de datos
+- Ejecución de ETL
+- Performance del modelo RFM
+- Activación de campañas
+
+### 8.2 Alertas y notificaciones
+
+Configurar alertas para:
+
+- Fallos en ingesta de datos
+- Errores en procesamiento ETL
+- Problemas con la activación de campañas
+- Rendimiento anómalo del modelo
+
+## 9. Escalabilidad y optimización
+
+Consideraciones para el crecimiento:
+
+- Ajuste del número de shards en Kinesis según el volumen de datos
+- Ajuste de la programación de procesamiento RFM según necesidades de negocio
+- Optimización de consultas Athena para mejorar el rendimiento
+
+## 10. Resolución de problemas comunes
+
+| Problema | Posible causa | Solución |
+|----------|---------------|----------|
+| Fallo en ingesta de Magento | Credenciales API inválidas | Verificar API keys y permisos |
+| Error en procesamiento ETL | Esquema de datos cambiado | Actualizar el esquema en Glue |
+| Activación fallida en AEM | Endpoint AEM no disponible | Verificar conectividad con AEM |
+| Modelo RFM no actualiza | Permisos de Feature Store | Revisar roles IAM para SageMaker |
+
+## 11. Referencias
+
+- [Documentación de AWS CloudFormation](https://docs.aws.amazon.com/cloudformation/)
+- [Documentación de Amazon SageMaker](https://docs.aws.amazon.com/sagemaker/)
+- [API de Magento Commerce](https://devdocs.magento.com/guides/v2.4/rest/bk-rest.html)
+- [API de Adobe Experience Manager](https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/implementing/developing/introduction/api-development.html)
