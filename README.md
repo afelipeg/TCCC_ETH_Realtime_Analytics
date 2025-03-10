@@ -52,7 +52,8 @@ He añadido una Lambda ScheduledIngestionLambda que se activa diariamente a la 1
   Recopila datos de Fanplayr
   Extrae cambios del sistema MySQL
 
-//Esta Lambda se integra con una regla de EventBridge (DailyDataIngestionRule) para ejecución automática.
+Esta Lambda se integra con una regla de EventBridge (DailyDataIngestionRule) para ejecución automática.
+
 2. Procesamiento ETL Mejorado
 He implementado un proceso ETL más robusto:
   La Lambda ETLLambda ahora detecta automáticamente la fuente de datos y fecha de los archivos
