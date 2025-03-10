@@ -42,3 +42,19 @@ Instrucciones de Implementación
 4. Configuración de visualizadores:
   Configure Tableau/Power BI/Looker para conectarse a Athena usando el controlador JDBC/ODBC
   Cree dashboards basados en las tablas definidas en el catálogo de Glue
+
+INGESTA DIARIA PROGRAMADA
+1. Ingesta Diaria Programada
+He añadido una Lambda ScheduledIngestionLambda que se activa diariamente a la 1 AM UTC para extraer datos de todas las fuentes:
+  Conecta con Magento Commerce
+  Extrae datos de Adobe Experience Manager
+  Obtiene métricas de Google Analytics
+  Recopila datos de Fanplayr
+  Extrae cambios del sistema MySQL
+
+//Esta Lambda se integra con una regla de EventBridge (DailyDataIngestionRule) para ejecución automática.
+2. Procesamiento ETL Mejorado
+He implementado un proceso ETL más robusto:
+  La Lambda ETLLambda ahora detecta automáticamente la fuente de datos y fecha de los archivos
+  El Job de Glue (ETLGlueJob) aplica transformaciones específicas según el tipo de fuente
+  Se genera automáticamente el script de ETL y se despliega a S3 durante la creación de la infraestructura
